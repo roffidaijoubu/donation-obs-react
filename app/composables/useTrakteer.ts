@@ -7,7 +7,6 @@ const trakteerStateSchema = z.object({
   streamApiKey: z.string().default(''),
   isConnected: z.boolean().default(false),
   isLoading: z.boolean().default(false),
-  logs: z.array(z.string()).default([])
 });
 
 type TrakteerState = z.infer<typeof trakteerStateSchema>;
@@ -16,6 +15,8 @@ const state = useState<TrakteerState>('trakteer', () => trakteerStateSchema.pars
 export const useTrakteer = () => {
   const toast = useToast();
   let store: Store | null = null;
+  const { triggerSceneSwitch } = useObs();
+  const { addLog } = useLog();
 
   const showNotification = async (title: string, body?: string) => {
     let permissionGranted = await isPermissionGranted();
@@ -52,12 +53,6 @@ export const useTrakteer = () => {
 
   // Initialize the store when the composable is first used
   onMounted(initializeStore);
-  const addLog = (message: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    const logMessage = `[${timestamp}] ${message}`;
-    state.value.logs.push(logMessage);
-    console.log(logMessage);
-  };
 
   const connect = async () => {
     if (state.value.isConnected) {
@@ -128,6 +123,7 @@ export const useTrakteer = () => {
           const logMessage = `New donation from ${data.supporter_name}! Message: ${data.supporter_message}`;
           addLog(logMessage);
           showNotification('New Donation!', logMessage);
+          triggerSceneSwitch();
         }
       };
 
