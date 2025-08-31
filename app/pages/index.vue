@@ -48,6 +48,7 @@
 </template>
 
 <script lang="ts" setup>
+// @ts-ignore
 const { state, connect, disconnect } = useTrakteer();
 
 function toggleConnection() {
