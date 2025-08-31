@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
-import OBSWebSocket from 'obs-websocket-js';
+import OBSWebSocket, { type OBSResponseTypes } from 'obs-websocket-js';
 import { Store } from '@tauri-apps/plugin-store';
 
 const obsStateSchema = z.object({
@@ -10,7 +10,9 @@ const obsStateSchema = z.object({
   isConnected: z.boolean().default(false),
   isLoading: z.boolean().default(false),
   scenes: z.array(z.string()).default([]),
-  targetScene: z.string().optional()
+  targetScene: z.string().optional(),
+  textSources: z.array(z.string()).default([]),
+  targetTextSource: z.string().optional()
 });
 
 type ObsState = z.infer<typeof obsStateSchema>;
@@ -55,6 +57,8 @@ export const useObs = () => {
     if (password) state.value.password = password;
     if (duration) state.value.duration = duration;
     if (targetScene) state.value.targetScene = targetScene;
+    const targetTextSource = await store.get<string>('targetTextSource');
+    if (targetTextSource) state.value.targetTextSource = targetTextSource;
   };
 
   onMounted(initializeStore);
@@ -67,12 +71,30 @@ export const useObs = () => {
       addLog('Connected to OBS.');
       showNotification('Connected to OBS', 'Successfully connected to the OBS WebSocket.');
 
-      const data = await obs.call('GetSceneList');
-      // Clear the array by setting its length to 0 (mutation)
+      const { scenes } = await obs.call('GetSceneList') as OBSResponseTypes['GetSceneList'];
       state.value.scenes.length = 0;
-      // Push the new items into the array (mutation)
-      for (const scene of data.scenes as { sceneName: string }[]) {
-        state.value.scenes.push(scene.sceneName);
+      for (const scene of scenes) {
+        if (scene.sceneName) {
+          state.value.scenes.push(String(scene.sceneName));
+        }
+      }
+
+      const { inputKinds } = await obs.call('GetInputKindList') as OBSResponseTypes['GetInputKindList'];
+      state.value.textSources.length = 0;
+
+      if (inputKinds) {
+        for (const kind of inputKinds) {
+          if (kind && kind.toLowerCase().includes('text')) {
+            const { inputs } = await obs.call('GetInputList', { inputKind: kind }) as OBSResponseTypes['GetInputList'];
+            if (inputs) {
+              for (const input of inputs) {
+                if (input.inputName) {
+                  state.value.textSources.push(String(input.inputName));
+                }
+              }
+            }
+          }
+        }
       }
 
       // Save settings on successful connection
@@ -110,6 +132,13 @@ export const useObs = () => {
     }
   });
 
+  watch(() => state.value.targetTextSource, async (targetTextSource) => {
+    if (store) {
+      await store.set('targetTextSource', targetTextSource);
+      await store.save();
+    }
+  });
+
   const triggerSceneSwitch = async () => {
     if (!state.value.isConnected || !state.value.targetScene) {
       return;
@@ -121,14 +150,33 @@ export const useObs = () => {
       addLog(`Switched to scene: ${state.value.targetScene}`);
       showNotification('Scene Switched', `Switched to ${state.value.targetScene}`);
 
-      setTimeout(async () => {
-        await obs.call('SetCurrentProgramScene', { sceneName: currentProgramSceneName });
-        addLog(`Switched back to scene: ${currentProgramSceneName}`);
-        showNotification('Scene Switched Back', `Switched back to ${currentProgramSceneName}`);
-      }, state.value.duration);
+      if (state.value.duration > 0) {
+        setTimeout(async () => {
+          await obs.call('SetCurrentProgramScene', { sceneName: currentProgramSceneName });
+          addLog(`Switched back to scene: ${currentProgramSceneName}`);
+          showNotification('Scene Switched Back', `Switched back to ${currentProgramSceneName}`);
+        }, state.value.duration);
+      }
     } catch (error: any) {
       addLog(`Failed to switch scene: ${error.message}`);
       showNotification('Failed to switch scene', error.message);
+    }
+  };
+
+  const updateTextSource = async (text: string) => {
+    if (!state.value.isConnected || !state.value.targetTextSource) {
+      return;
+    }
+
+    try {
+      await obs.call('SetInputSettings', {
+        inputName: state.value.targetTextSource,
+        inputSettings: {
+          text
+        }
+      });
+    } catch (error: any) {
+      showNotification('Failed to update text source', error.message);
     }
   };
 
@@ -136,6 +184,7 @@ export const useObs = () => {
     state,
     connect,
     disconnect,
-    triggerSceneSwitch
+    triggerSceneSwitch,
+    updateTextSource
   };
 };
