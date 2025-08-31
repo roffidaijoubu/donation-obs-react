@@ -15,8 +15,11 @@ const state = useState<TrakteerState>('trakteer', () => trakteerStateSchema.pars
 export const useTrakteer = () => {
   const toast = useToast();
   let store: Store | null = null;
-  const { triggerSceneSwitch } = useObs();
+  const { triggerSceneSwitch, updateTextSource } = useObs();
   const { addLog } = useLog();
+  let ws: WebSocket | null = null;
+  const donationQueue: any[] = [];
+  let isProcessing = false;
 
   const showNotification = async (title: string, body?: string) => {
     let permissionGranted = await isPermissionGranted();
@@ -55,7 +58,7 @@ export const useTrakteer = () => {
   onMounted(initializeStore);
 
   const connect = async () => {
-    if (state.value.isConnected) {
+    if (state.value.isConnected || state.value.isLoading) {
       return;
     }
 
@@ -68,20 +71,24 @@ export const useTrakteer = () => {
     addLog('Connecting to Trakteer...');
 
     try {
-      const ws = new WebSocket("wss://socket.trakteer.id/app/2ae25d102cc6cd41100a?protocol=7&client=js&version=5.1.1&flash=false");
+      ws = new WebSocket("wss://socket.trakteer.id/app/2ae25d102cc6cd41100a?protocol=7&client=js&version=5.1.1&flash=false");
       let pingInterval: NodeJS.Timeout | null = null;
 
       ws.onopen = async () => {
         try {
           const response = await fetch(`https://trakteer.id/${state.value.pageId}/stream?key=${state.value.streamApiKey}`);
           const text = await response.text();
-          const result = /creator-stream\.(.*?)\./gi.exec(text);
+          const result = /creator-stream\.(.*?)\./.exec(text);
 
           if (!result || !result) {
             throw new Error("Failed to get user ID. Invalid Page ID or Stream API Key?");
           }
 
-          const userId = result;
+          const userId = result[1];
+
+          addLog(`Fetched user ID: ${userId}`);
+
+          if (!ws) return;
 
           ws.send(JSON.stringify({
             event: "pusher:subscribe",
@@ -100,6 +107,7 @@ export const useTrakteer = () => {
           }));
 
           pingInterval = setInterval(() => {
+            if (!ws) return;
             ws.send(JSON.stringify({
               data: {},
               event: "pusher:ping",
@@ -120,10 +128,10 @@ export const useTrakteer = () => {
         const msg = JSON.parse(event.data);
         if (msg.event === "Illuminate\\Notifications\\Events\\BroadcastNotificationCreated") {
           const data = JSON.parse(msg.data);
-          const logMessage = `New donation from ${data.supporter_name}! Message: ${data.supporter_message}`;
-          addLog(logMessage);
-          showNotification('New Donation!', logMessage);
-          triggerSceneSwitch();
+          donationQueue.push(data);
+          if (!isProcessing) {
+            processDonationQueue();
+          }
         }
       };
 
@@ -143,7 +151,6 @@ export const useTrakteer = () => {
         disconnect(false);
       };
 
-      (window as any).__TRAKTEER_WEBSOCKET__ = ws;
     } catch (error: any) {
       addLog(`Error: ${error.message}`);
       disconnect(false);
@@ -153,10 +160,9 @@ export const useTrakteer = () => {
   };
 
   const disconnect = (log = true) => {
-    const ws = (window as any).__TRAKTEER_WEBSOCKET__;
     if (ws) {
       ws.close();
-      (window as any).__TRAKTEER_WEBSOCKET__ = null;
+      ws = null;
     }
     if (state.value.isConnected) {
       state.value.isConnected = false;
@@ -165,6 +171,25 @@ export const useTrakteer = () => {
         showNotification('Trakteer Disconnected', 'The Trakteer connection has been closed.');
       }
     }
+  };
+
+  const processDonationQueue = async () => {
+    if (donationQueue.length === 0) {
+      isProcessing = false;
+      return;
+    }
+
+    isProcessing = true;
+    const data = donationQueue.shift();
+
+    const logMessage = `New donation from ${data.supporter_name}! Message: ${data.supporter_message}`;
+    addLog(logMessage);
+    showNotification('New Donation!', logMessage);
+    updateTextSource(data.supporter_message);
+    await triggerSceneSwitch();
+
+    // Process the next donation in the queue
+    processDonationQueue();
   };
 
   return {

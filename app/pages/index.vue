@@ -1,10 +1,9 @@
 <template>
-  <UContainer class="py-8">
-    <div class="max-w-xl flex gap-5">
-      <UCard class="w-full shrink-0">
+    <div class="max-w-screen flex gap-5 py-2">
+      <UCard class="w-full">
         <h2 class="text-xl font-bold mb-4">Trakteer Connection</h2>
         <UForm :state="state" class="space-y-4" @submit="toggleConnection">
-          <div class="form-group">
+          <div class="form-group" v-if="!state.isConnected">
             <label for="pageId">Page ID</label>
             <UInput
               id="pageId"
@@ -18,7 +17,7 @@
             </p>
           </div>
 
-          <div class="form-group">
+          <div class="form-group" v-if="!state.isConnected">
             <label for="streamApiKey">Stream API Key</label>
             <UInput
               id="streamApiKey"
@@ -52,14 +51,14 @@
         </UForm>
       </UCard>
 
-      <UCard class="w-full shrink-0">
+      <UCard class="w-full">
         <h2 class="text-xl font-bold mb-4">OBS Connection</h2>
         <UForm
           :state="obsState"
           class="space-y-4"
           @submit="toggleObsConnection"
         >
-          <div class="form-group">
+          <div class="form-group" v-if="!obsState.isConnected">
             <label for="obsUrl">OBS WebSocket URL</label>
             <UInput
               id="obsUrl"
@@ -71,7 +70,7 @@
             <p class="help-text">The URL of your OBS WebSocket server.</p>
           </div>
 
-          <div class="form-group">
+          <div class="form-group" v-if="!obsState.isConnected">
             <label for="obsPassword">OBS WebSocket Password</label>
             <UInput
               id="obsPassword"
@@ -94,7 +93,7 @@
             />
             <p class="help-text">
               How long to stay on the target scene before switching back (in
-              milliseconds).
+              milliseconds). Set to 0 for an indefinite switch.
             </p>
           </div>
 
@@ -111,29 +110,39 @@
             </p>
           </div>
 
-          <UButton
-            v-if="obsState.isConnected"
-            color="secondary"
-            block
-            @click="testDonationTrigger"
-          >
-            Test Donation Trigger
-          </UButton>
+          <div v-if="obsState.isConnected" class="form-group">
+            <label for="targetTextSource">Target Text Source</label>
+            <USelect id="targetTextSource" v-model="obsState.targetTextSource" :items="obsState.textSources" class="w-full" />
+            <p class="help-text">
+              The text source to update with the donation message.
+            </p>
+          </div>
 
-          <UButton
-            :color="obsState.isConnected ? 'error' : 'primary'"
-            :loading="obsState.isLoading"
-            type="submit"
-            block
-          >
-            {{
-              obsState.isConnected ? "Disconnect from OBS" : "Connect to OBS"
-            }}
-          </UButton>
+          <div class="flex gap-2">
+            <UButton
+              v-if="obsState.isConnected"
+              color="secondary"
+              block
+              @click="testDonationTrigger"
+            >
+              Test Donation Trigger
+            </UButton>
+  
+            <UButton
+              :color="obsState.isConnected ? 'error' : 'primary'"
+              :loading="obsState.isLoading"
+              type="submit"
+              block
+            >
+              {{
+                obsState.isConnected ? "Disconnect from OBS" : "Connect to OBS"
+              }}
+            </UButton>
+          </div>
         </UForm>
       </UCard>
     </div>
-    <div class="mt-8 w-full">
+    <div class="mt-2 w-full">
       <h2 class="text-lg font-semibold mb-2">Logs</h2>
       <UCard>
         <div class="h-64 overflow-y-auto p-2 font-mono text-sm">
@@ -143,7 +152,6 @@
         </div>
       </UCard>
     </div>
-  </UContainer>
 </template>
 
 <script lang="ts" setup>
@@ -177,7 +185,8 @@ function toggleObsConnection() {
 }
 
 function testDonationTrigger() {
-  const { triggerSceneSwitch } = useObs();
+  const { triggerSceneSwitch, updateTextSource } = useObs();
+  updateTextSource('Test donation from Roo!');
   triggerSceneSwitch();
 }
 </script>
