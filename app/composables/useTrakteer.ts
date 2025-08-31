@@ -73,103 +73,100 @@ export const useTrakteer = () => {
     addLog('Connecting to Trakteer...');
 
     try {
-      // Using a POST request to initiate the SSE connection is not directly
-      // supported by EventSource. We'll use fetch to initiate and then
-      // handle the stream, but the core logic remains the same.
-      // For simplicity, we'll assume the server is adapted to handle this,
-      // or we switch to a GET request if possible.
-      // Let's stick to the fetch-based approach for now to keep server compatibility.
-      // A true EventSource would look like:
-      // eventSource = new EventSource(`/api/trakteer/connect?pageId=${state.value.pageId}&streamApiKey=${state.value.streamApiKey}`);
-      // But this requires changing the server endpoint to GET and passing credentials in URL.
+      const ws = new WebSocket("wss://socket.trakteer.id/app/2ae25d102cc6cd41100a?protocol=7&client=js&version=5.1.1&flash=false");
+      let pingInterval: NodeJS.Timeout | null = null;
 
-      // Re-implementing with a persistent fetch stream is complex to manage globally.
-      // A better approach is to use WebSockets or manage the fetch AbortController globally.
-      // Given the current structure, let's stick to the EventSource API and adjust the server.
-      // It's a cleaner long-term solution.
+      ws.onopen = async () => {
+        try {
+          const response = await fetch(`https://trakteer.id/${state.value.pageId}/stream?key=${state.value.streamApiKey}`);
+          const text = await response.text();
+          const result = /creator-stream\.(.*?)\./gi.exec(text);
 
-      // Let's assume for now we can't change the server. We need a global AbortController.
-      const abortController = new AbortController();
-      (window as any).__TRAKTEER_ABORT_CONTROLLER__ = abortController;
-
-      const response = await fetch('/api/trakteer/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pageId: state.value.pageId,
-          streamApiKey: state.value.streamApiKey
-        }),
-        signal: abortController.signal
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.statusMessage || 'Failed to connect');
-      }
-
-      // Save credentials on successful connection
-      if (store) {
-        await store.set('pageId', state.value.pageId);
-        await store.set('streamApiKey', state.value.streamApiKey);
-        await store.save();
-      }
-
-      state.value.isConnected = true;
-      state.value.isLoading = false;
-      addLog('Successfully connected to Trakteer stream.');
-      showNotification('Trakteer Connected', 'Successfully connected to the Trakteer donation stream.');
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('Failed to get stream reader');
-      }
-
-      const decoder = new TextDecoder();
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          addLog('Stream ended.');
-          disconnect();
-          break;
-        }
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n\n').filter(line => line.startsWith('data:'));
-        for (const line of lines) {
-          const event = JSON.parse(line.replace('data: ', ''));
-          if (event.type === 'log') {
-            addLog(event.payload);
-          } else if (event.type === 'donation') {
-            const { name, message } = event.payload;
-            const logMessage = `New donation from ${name}! Message: ${message}`;
-            addLog(logMessage);
-            showNotification('New Donation!', logMessage);
+          if (!result || !result) {
+            throw new Error("Failed to get user ID. Invalid Page ID or Stream API Key?");
           }
+
+          const userId = result;
+
+          ws.send(JSON.stringify({
+            event: "pusher:subscribe",
+            data: {
+              auth: "",
+              channel: `creator-stream.${userId}.${state.value.streamApiKey}`,
+            },
+          }));
+
+          ws.send(JSON.stringify({
+            event: "pusher:subscribe",
+            data: {
+              auth: "",
+              channel: `creator-stream-test.${userId}.${state.value.streamApiKey}`,
+            },
+          }));
+
+          pingInterval = setInterval(() => {
+            ws.send(JSON.stringify({
+              data: {},
+              event: "pusher:ping",
+            }));
+          }, 5000);
+
+          state.value.isConnected = true;
+          state.value.isLoading = false;
+          addLog('Successfully connected to Trakteer.');
+          showNotification('Trakteer Connected', 'Successfully connected to the Trakteer donation stream.');
+        } catch (error: any) {
+          addLog(`Error: ${error.message}`);
+          disconnect(false);
         }
-      }
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.event === "Illuminate\\Notifications\\Events\\BroadcastNotificationCreated") {
+          const data = JSON.parse(msg.data);
+          const logMessage = `New donation from ${data.supporter_name}! Message: ${data.supporter_message}`;
+          addLog(logMessage);
+          showNotification('New Donation!', logMessage);
+        }
+      };
+
+      ws.onclose = () => {
+        if (pingInterval) {
+          clearInterval(pingInterval);
+        }
+        addLog('Trakteer connection closed.');
+        disconnect(false);
+      };
+
+      ws.onerror = (error) => {
+        if (pingInterval) {
+          clearInterval(pingInterval);
+        }
+        addLog(`Trakteer error: ${error}`);
+        disconnect(false);
+      };
+
+      (window as any).__TRAKTEER_WEBSOCKET__ = ws;
     } catch (error: any) {
-      if (error.name === 'AbortError') {
-        addLog('Connection aborted.');
-      } else {
-        addLog(`Error: ${error.message}`);
-      }
-      disconnect(false); // Don't log disconnect message if it was an error
+      addLog(`Error: ${error.message}`);
+      disconnect(false);
     } finally {
       state.value.isLoading = false;
     }
   };
 
   const disconnect = (log = true) => {
-    const abortController = (window as any).__TRAKTEER_ABORT_CONTROLLER__;
-    if (abortController) {
-      abortController.abort();
-      (window as any).__TRAKTEER_ABORT_CONTROLLER__ = null;
+    const ws = (window as any).__TRAKTEER_WEBSOCKET__;
+    if (ws) {
+      ws.close();
+      (window as any).__TRAKTEER_WEBSOCKET__ = null;
     }
     if (state.value.isConnected) {
       state.value.isConnected = false;
       if (log) {
         addLog('Disconnected.');
-        showNotification('Trakteer Disconnected', 'The connection to the Trakteer stream has been closed.');
+        showNotification('Trakteer Disconnected', 'The Trakteer connection has been closed.');
       }
     }
   };

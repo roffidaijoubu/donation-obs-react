@@ -91,5 +91,15 @@ export default defineNuxtConfig({
 	experimental: {
 		typedPages: true
 	},
-	compatibilityDate: "2025-07-01"
+	compatibilityDate: "2025-07-01",
+	nitro: {
+		prerender: {
+			routes: [
+				"/",
+			],
+			ignore: [
+				"/api/trakteer/connect",
+			]
+		}
+	}
 });
