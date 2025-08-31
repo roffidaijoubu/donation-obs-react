@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 import { Store } from '@tauri-apps/plugin-store';
+import { toast } from 'vue-sonner';
 
 const trakteerStateSchema = z.object({
   pageId: z.string().default(''),
@@ -13,7 +14,6 @@ type TrakteerState = z.infer<typeof trakteerStateSchema>;
 
 const state = useState<TrakteerState>('trakteer', () => trakteerStateSchema.parse({}));
 export const useTrakteer = () => {
-  const toast = useToast();
   let store: Store | null = null;
   const { triggerSceneSwitch, updateTextSource } = useObs();
   const { addLog } = useLog();
@@ -31,10 +31,8 @@ export const useTrakteer = () => {
     if (permissionGranted) {
       sendNotification({ title, body });
     } else {
-      toast.add({
-        title: 'Error',
-        description: 'Missing notifications permission',
-        color: 'error'
+      toast.error('Error', {
+        description: 'Missing notifications permission'
       });
     }
   };

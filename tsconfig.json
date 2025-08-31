@@ -2,7 +2,13 @@
 	"compilerOptions": {
 		"composite": true,
 		"target": "ESNext",
-		"module": "ESNext"
+		"module": "ESNext",
+		"baseUrl": ".",
+		"paths": {
+			"@/*": [
+				"./app/*"
+			]
+		}
 	},
 	"references": [
 		{

@@ -1,27 +1,16 @@
 <template>
 	<header class="top-0 z-10">
-		<UContainer class="md:py-2">
-			<UNavigationMenu
-				:items="mobileItems"
-				variant="link"
-				:ui="{
-					root: 'md:hidden'
-				}"
-			/>
-			<UNavigationMenu
-				:items="desktopItems"
-				variant="link"
-				:ui="{
-					root: 'hidden md:flex',
-					viewportWrapper: 'max-w-2xl absolute-center-h',
-					list: 'md:gap-x-2'
-				}"
-			/>
-		</UContainer>
+		<div class="container mx-auto px-4 md:py-2">
+			<NavigationMenu :items="mobileItems" class="md:hidden" />
+			<NavigationMenu :items="desktopItems" class="hidden md:flex" />
+		</div>
 	</header>
 </template>
 
 <script lang="ts" setup>
+	import {
+		NavigationMenu,
+	} from '@/components/ui/navigation-menu'
 	const { pages } = usePages();
 	const { showSidebar } = useSidebar();
 	const tauriVersion = await useTauriAppGetTauriVersion();

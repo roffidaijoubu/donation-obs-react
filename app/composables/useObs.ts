@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 import OBSWebSocket, { type OBSResponseTypes } from 'obs-websocket-js';
 import { Store } from '@tauri-apps/plugin-store';
+import { toast } from 'vue-sonner';
 
 const obsStateSchema = z.object({
   url: z.string().default('ws://127.0.0.1:4455'),
@@ -23,7 +24,6 @@ let store: Store | null = null;
 
 export const useObs = () => {
   const { addLog } = useLog();
-  const toast = useToast();
 
   const showNotification = async (title: string, body?: string) => {
     let permissionGranted = await isPermissionGranted();
@@ -35,10 +35,8 @@ export const useObs = () => {
     if (permissionGranted) {
       sendNotification({ title, body });
     } else {
-      toast.add({
-        title: 'Error',
-        description: 'Missing notifications permission',
-        color: 'error'
+      toast.error('Error', {
+        description: 'Missing notifications permission'
       });
     }
   };
