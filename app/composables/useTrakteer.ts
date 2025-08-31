@@ -65,6 +65,12 @@ export const useTrakteer = () => {
       return;
     }
 
+    if (store) {
+      await store.set('pageId', state.value.pageId);
+      await store.set('streamApiKey', state.value.streamApiKey);
+      await store.save();
+    }
+
     state.value.isLoading = true;
     addLog('Connecting to Trakteer...');
 
