@@ -136,8 +136,15 @@ export const useTrakteer = () => {
         const chunk = decoder.decode(value);
         const lines = chunk.split('\n\n').filter(line => line.startsWith('data:'));
         for (const line of lines) {
-          const data = JSON.parse(line.replace('data: ', ''));
-          addLog(data);
+          const event = JSON.parse(line.replace('data: ', ''));
+          if (event.type === 'log') {
+            addLog(event.payload);
+          } else if (event.type === 'donation') {
+            const { name, message } = event.payload;
+            const logMessage = `New donation from ${name}! Message: ${message}`;
+            addLog(logMessage);
+            showNotification('New Donation!', logMessage);
+          }
         }
       }
     } catch (error: any) {

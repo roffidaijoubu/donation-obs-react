@@ -43,20 +43,22 @@ export default defineEventHandler(async (event) => {
 
 		const { client, ts } = connectionResult;
 		const stream = new PassThrough();
-		const log = (message: string) => {
-			stream.write(`data: ${JSON.stringify(message)}\n\n`);
+		const sendEvent = (type: string, payload: any) => {
+			stream.write(`data: ${JSON.stringify({ type, payload })}\n\n`);
 		};
 
-		log(`Berhasil terkoneksi dengan API Trakteer pada ${ts.toLocaleTimeString()}`);
+		sendEvent("log", `Berhasil terkoneksi dengan API Trakteer pada ${ts.toLocaleTimeString()}`);
 
 		client.on("donation", (donation: Donation) => {
-			log(`Donasi baru dari ${donation.supporter_name}!`);
-			log(`Pesan: ${donation.supporter_message}!`);
+			sendEvent("donation", {
+				name: donation.supporter_name,
+				message: donation.supporter_message
+			});
 		});
 
 		client.on("error", (err: any) => {
 			// Errors after initial connection
-			log(`Trakteer client error: ${err}`);
+			sendEvent("log", `Trakteer client error: ${err}`);
 			stream.end();
 		});
 
